@@ -101,13 +101,24 @@ function CountUp({ value, duration = 600 }: { value: number; duration?: number }
 export default function MealMateApp() {
   const [tab, setTab] = useState<0 | 1 | 2 | 3>(0);
   const [phase, setPhase] = useState<Phase>("Cut");
+  const [weight, setWeight] = useState<number | null>(null); // kg
+  const [profileOpen, setProfileOpen] = useState(false);
   const [meals, setMeals] = useState<Meal[]>([
     { id: "m1", name: "Greek Yogurt Bowl", kcal: 320, protein: 28, carbs: 35, time: "8:15 AM" },
     { id: "m2", name: "Chicken & Rice", kcal: 520, protein: 45, carbs: 60, time: "12:40 PM" },
   ]);
-  const [water, setWater] = useState(1.4);
+  const [water, setWater] = useState(1.4); // L consumed today
 
-  const targets = PHASE_DATA[phase];
+  // Open onboarding if user hasn't set weight yet
+  useEffect(() => {
+    if (weight === null) {
+      const t = setTimeout(() => setProfileOpen(true), 400);
+      return () => clearTimeout(t);
+    }
+  }, [weight]);
+
+  const effectiveWeight = weight ?? 75;
+  const targets = computeTargets(effectiveWeight, phase);
   const consumed = meals.reduce(
     (a, m) => ({
       kcal: a.kcal + m.kcal,
@@ -123,11 +134,14 @@ export default function MealMateApp() {
     setMeals((prev) => [...prev, { ...m, id: crypto.randomUUID(), time }]);
   };
 
+  const adjustWater = (delta: number) =>
+    setWater((w) => Math.max(0, Math.min(targets.water + 1, +(w + delta).toFixed(2))));
+
   const screens = [
-    <HomeScreen key="home" phase={phase} targets={targets} consumed={consumed} meals={meals} water={water} setWater={setWater} addMeal={addMeal} />,
-    <GymScreen key="gym" />,
-    <MealsScreen key="meals" phase={phase} targets={targets} addMeal={addMeal} />,
-    <AdvisorScreen key="adv" phase={phase} setPhase={setPhase} />,
+    <HomeScreen key="home" phase={phase} targets={targets} consumed={consumed} meals={meals} water={water} adjustWater={adjustWater} resetWater={() => setWater(0)} addMeal={addMeal} weight={weight} openProfile={() => setProfileOpen(true)} />,
+    <GymScreen key="gym" weight={effectiveWeight} phase={phase} />,
+    <MealsScreen key="meals" phase={phase} targets={targets} weight={effectiveWeight} addMeal={addMeal} />,
+    <AdvisorScreen key="adv" phase={phase} setPhase={setPhase} weight={effectiveWeight} targets={targets} />,
   ];
 
   return (
