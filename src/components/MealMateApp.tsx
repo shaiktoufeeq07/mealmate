@@ -37,27 +37,43 @@ import { Badge } from "@/components/ui/badge";
 // ---------- shared types & data ----------
 type Phase = "Bulk" | "Lean Bulk" | "Cut";
 type Meal = { id: string; name: string; kcal: number; protein: number; carbs: number; fat?: number; time: string };
+type Targets = { kcal: number; protein: number; carbs: number; fat: number; water: number };
 
-const PHASE_DATA: Record<
-  Phase,
-  { kcal: number; protein: number; carbs: number; fat: number; confidence: number; explanation: string }
-> = {
+// Multipliers per kg of bodyweight. AI recommendations scale with the user's weight.
+const PHASE_MULTIPLIERS: Record<Phase, { kcal: number; protein: number; carbs: number; fat: number }> = {
+  Bulk:       { kcal: 38, protein: 2.2, carbs: 4.5, fat: 1.1 },
+  "Lean Bulk":{ kcal: 33, protein: 2.2, carbs: 3.5, fat: 1.0 },
+  Cut:        { kcal: 26, protein: 2.4, carbs: 2.5, fat: 0.8 },
+};
+
+const PHASE_META: Record<Phase, { confidence: number; explain: (w: number, t: Targets) => string }> = {
   Bulk: {
-    kcal: 2800, protein: 200, carbs: 330, fat: 90, confidence: 74,
-    explanation:
-      "Based on your recent plateau in strength gains, increasing your caloric surplus to 2,800 kcal will fuel muscle growth. Expect +0.5kg/week body weight increase.",
+    confidence: 74,
+    explain: (w, t) =>
+      `At ${w}kg, a Bulk surplus targets ${t.kcal} kcal/day (~38 kcal/kg). Expect +0.4-0.6kg/week. Hit ${t.protein}g protein to drive muscle synthesis.`,
   },
   "Lean Bulk": {
-    kcal: 2400, protein: 180, carbs: 270, fat: 80, confidence: 87,
-    explanation:
-      "Your weight has trended +0.3kg/week over 4 weeks while strength gains are consistent. A Lean Bulk maximises muscle while limiting fat gain.",
+    confidence: 87,
+    explain: (w, t) =>
+      `At ${w}kg, a Lean Bulk holds you at ${t.kcal} kcal/day (~33 kcal/kg) — enough surplus for strength gains while keeping fat gain minimal (~0.2kg/week).`,
   },
   Cut: {
-    kcal: 1900, protein: 170, carbs: 180, fat: 65, confidence: 91,
-    explanation:
-      "With body fat trending above target, a caloric deficit of 500 kcal/day while maintaining high protein will preserve muscle mass during fat loss.",
+    confidence: 91,
+    explain: (w, t) =>
+      `At ${w}kg, a Cut deficit of ${t.kcal} kcal/day (~26 kcal/kg) drops ~0.5kg/week. High protein (${t.protein}g) preserves the muscle you've built.`,
   },
 };
+
+function computeTargets(weight: number, phase: Phase): Targets {
+  const m = PHASE_MULTIPLIERS[phase];
+  return {
+    kcal: Math.round((weight * m.kcal) / 10) * 10,
+    protein: Math.round(weight * m.protein),
+    carbs: Math.round(weight * m.carbs),
+    fat: Math.round(weight * m.fat),
+    water: Math.max(2, Math.round((weight * 0.035) * 10) / 10), // L/day
+  };
+}
 
 // ---------- CountUp ----------
 function CountUp({ value, duration = 600 }: { value: number; duration?: number }) {
