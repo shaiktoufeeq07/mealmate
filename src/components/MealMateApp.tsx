@@ -447,19 +447,52 @@ function MacroTile({
 }
 
 // ---------- SCREEN 2: GYM ----------
-function GymScreen() {
+function GymScreen({ weight, phase }: { weight: number; phase: Phase }) {
+  // Weight-aware programming. Bench target = bodyweight * phase coefficient.
+  const benchCoef = phase === "Bulk" ? 1.15 : phase === "Lean Bulk" ? 1.05 : 0.95;
+  const benchTarget = Math.round(weight * benchCoef / 2.5) * 2.5;
+  const ohp = Math.round((weight * 0.6) / 2.5) * 2.5;
+  const lat = Math.max(5, Math.round((weight * 0.18) / 0.5) * 0.5);
+
+  const repScheme =
+    phase === "Cut"
+      ? { sets: 3, reps: 12 } // preserve muscle, higher reps
+      : phase === "Lean Bulk"
+        ? { sets: 4, reps: 8 }
+        : { sets: 5, reps: 6 }; // bulk — heavier
+
   const [exercises, setExercises] = useState([
-    { name: "Bench Press", sets: 4, reps: 8, weight: 80, unit: "kg" },
-    { name: "Overhead Press", sets: 3, reps: 10, weight: 45, unit: "kg" },
+    { name: "Bench Press", sets: repScheme.sets, reps: repScheme.reps, weight: benchTarget, unit: "kg" },
+    { name: "Overhead Press", sets: 3, reps: repScheme.reps + 2, weight: ohp, unit: "kg" },
     { name: "Tricep Dips", sets: 3, reps: 12, weight: 0, unit: "BW" },
-    { name: "Lateral Raise", sets: 4, reps: 15, weight: 12, unit: "kg" },
+    { name: "Lateral Raise", sets: 4, reps: 15, weight: lat, unit: "kg" },
   ]);
+
+  // Re-sync prescribed loads when weight or phase change
+  useEffect(() => {
+    setExercises([
+      { name: "Bench Press", sets: repScheme.sets, reps: repScheme.reps, weight: benchTarget, unit: "kg" },
+      { name: "Overhead Press", sets: 3, reps: repScheme.reps + 2, weight: ohp, unit: "kg" },
+      { name: "Tricep Dips", sets: 3, reps: 12, weight: 0, unit: "BW" },
+      { name: "Lateral Raise", sets: 4, reps: 15, weight: lat, unit: "kg" },
+    ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weight, phase]);
+
+  // 4-week trend scaled around the user's bench target
   const data = [
-    { name: "W1", kg: 70 },
-    { name: "W2", kg: 75 },
-    { name: "W3", kg: 77.5 },
-    { name: "W4", kg: 80 },
+    { name: "W1", kg: Math.round((benchTarget - 10) * 10) / 10 },
+    { name: "W2", kg: Math.round((benchTarget - 5) * 10) / 10 },
+    { name: "W3", kg: Math.round((benchTarget - 2.5) * 10) / 10 },
+    { name: "W4", kg: benchTarget },
   ];
+
+  const aiTip =
+    phase === "Bulk"
+      ? `At ${weight}kg in a Bulk, push compounds heavy (${repScheme.sets}×${repScheme.reps}). Add 2.5kg to bench weekly while you can.`
+      : phase === "Lean Bulk"
+        ? `At ${weight}kg, run ${repScheme.sets}×${repScheme.reps} on big lifts. Add reps before load to chase clean strength gains.`
+        : `At ${weight}kg in a Cut, keep loads near ${benchTarget}kg but raise reps to ${repScheme.reps}. Protect strength, don't chase PRs.`;
 
   const update = (i: number, key: "reps" | "weight", delta: number) =>
     setExercises((prev) =>
@@ -468,8 +501,21 @@ function GymScreen() {
 
   return (
     <div className="space-y-4 pb-4">
-      <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold">Today · 19 Mon</p>
-      <h1 className="text-[30px] font-extrabold leading-none">Push Day</h1>
+      <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold">Today · Push Day</p>
+      <h1 className="text-[30px] font-extrabold leading-none">{weight}kg · {phase}</h1>
+
+      <div
+        style={{ ...cardStyle, borderLeft: "3px solid var(--mm-primary)", padding: 14 }}
+      >
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <Sparkles size={12} style={{ color: "var(--mm-primary)" }} />
+          <span className="text-[10px] uppercase tracking-wider font-bold" style={{ color: "var(--mm-primary-dark)" }}>
+            AI Coach
+          </span>
+        </div>
+        <p className="text-[13px] text-gray-600 leading-relaxed">{aiTip}</p>
+      </div>
+
 
       <motion.div
         initial={{ scale: 1 }}
