@@ -9,10 +9,11 @@ export const Route = createFileRoute("/api/meals")({
     handlers: {
       POST: async ({ request }: { request: Request }) => {
         try {
-          const { ingredients, phase, targets } = (await request.json()) as {
+          const { ingredients, phase, targets, weight } = (await request.json()) as {
             ingredients: string[];
             phase: string;
             targets: { kcal: number; protein: number; carbs: number; fat: number };
+            weight?: number;
           };
 
           const apiKey = process.env.LOVABLE_API_KEY;
