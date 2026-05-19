@@ -40,7 +40,7 @@ export const Route = createFileRoute("/api/meals")({
                   .length(3),
               }),
             }),
-            prompt: `You are a nutrition coach. The user is in a ${phase} phase with daily targets of ${targets.kcal} kcal, ${targets.protein}g protein, ${targets.carbs}g carbs, ${targets.fat}g fat. Using ONLY these ingredients (plus basic pantry staples like oil, salt, spices): ${ingredients.join(", ")}. Suggest exactly 3 distinct meals that fit the phase's macro profile (roughly 1/3 of daily targets each). Keep descriptions to one short sentence.`,
+            prompt: `You are a nutrition coach. The user weighs ${weight ?? "unknown"}kg and is in a ${phase} phase. Their daily targets (already personalised to their bodyweight) are ${targets.kcal} kcal, ${targets.protein}g protein, ${targets.carbs}g carbs, ${targets.fat}g fat. Using ONLY these ingredients (plus basic pantry staples like oil, salt, spices): ${ingredients.join(", ")}. Suggest exactly 3 distinct meals that fit the phase's macro profile (roughly 1/3 of daily targets each). Scale portion sizes so they make sense for a ${weight ?? 75}kg person on a ${phase}. Keep descriptions to one short sentence.`,
           });
 
           return Response.json(output);
