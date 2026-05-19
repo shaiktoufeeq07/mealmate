@@ -1,6 +1,20 @@
 @import "tailwindcss" source(none);
 @source "../src";
 @import "tw-animate-css";
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap");
+
+:root {
+  --mm-primary: #1D9E75;
+  --mm-primary-light: #e1f5ee;
+  --mm-primary-dark: #0f6e56;
+  --mm-amber: #f59e0b;
+  --mm-amber-light: #fef3c7;
+  --mm-amber-text: #92400e;
+  --mm-border: #f3f4f6;
+  --mm-muted: #9ca3af;
+}
+
+.font-dm { font-family: "DM Sans", system-ui, sans-serif; }
 
 @custom-variant dark (&:is(.dark *));
 
