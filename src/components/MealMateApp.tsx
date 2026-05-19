@@ -610,8 +610,8 @@ function Stepper({ value, onMinus, onPlus, disabled }: { value: number | string;
 type Suggestion = { name: string; kcal: number; protein: number; carbs: number; fat: number; description: string };
 
 function MealsScreen({
-  phase, targets, addMeal,
-}: { phase: Phase; targets: { kcal: number; protein: number; carbs: number; fat: number }; addMeal: (m: Omit<Meal, "id" | "time">) => void }) {
+  phase, targets, weight, addMeal,
+}: { phase: Phase; targets: Targets; weight: number; addMeal: (m: Omit<Meal, "id" | "time">) => void }) {
   const [tags, setTags] = useState<string[]>(["Chicken", "Rice", "Eggs"]);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
@@ -627,7 +627,7 @@ function MealsScreen({
       const res = await fetch("/api/meals", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ingredients: tags, phase, targets }),
+        body: JSON.stringify({ ingredients: tags, phase, targets, weight }),
       });
       if (!res.ok) throw new Error("bad");
       const data = (await res.json()) as { meals: Suggestion[] };
@@ -639,6 +639,7 @@ function MealsScreen({
       setLoading(false);
     }
   };
+
 
   return (
     <div className="space-y-4 pb-4">
