@@ -260,15 +260,18 @@ function StaggerCard({ delay = 0, children, style }: { delay?: number; children:
 
 // ---------- SCREEN 1: HOME ----------
 function HomeScreen({
-  phase, targets, consumed, meals, water, setWater, addMeal,
+  phase, targets, consumed, meals, water, adjustWater, resetWater, addMeal, weight, openProfile,
 }: {
   phase: Phase;
-  targets: { kcal: number; protein: number; carbs: number };
+  targets: Targets;
   consumed: { kcal: number; protein: number; carbs: number };
   meals: Meal[];
   water: number;
-  setWater: (n: number) => void;
+  adjustWater: (delta: number) => void;
+  resetWater: () => void;
   addMeal: (m: Omit<Meal, "id" | "time">) => void;
+  weight: number | null;
+  openProfile: () => void;
 }) {
   const [sheet, setSheet] = useState(false);
   const [form, setForm] = useState({ name: "", kcal: "", protein: "", carbs: "" });
@@ -285,6 +288,7 @@ function HomeScreen({
           <p className="text-[14px] text-gray-500 mt-1">{today}</p>
         </div>
         <button
+          onClick={openProfile}
           className="rounded-full flex items-center justify-center"
           style={{ width: 42, height: 42, background: "var(--mm-primary-light)" }}
         >
@@ -292,15 +296,24 @@ function HomeScreen({
         </button>
       </div>
 
-      <motion.div
-        key={phase}
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-bold"
-        style={{ background: "var(--mm-primary-light)", color: "var(--mm-primary-dark)" }}
-      >
-        <Sparkles size={12} /> {phase} Phase
-      </motion.div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <motion.div
+          key={phase}
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-bold"
+          style={{ background: "var(--mm-primary-light)", color: "var(--mm-primary-dark)" }}
+        >
+          <Sparkles size={12} /> {phase} Phase
+        </motion.div>
+        <button
+          onClick={openProfile}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-bold border"
+          style={{ borderColor: "var(--mm-border)", color: "#374151" }}
+        >
+          {weight ? `${weight} kg` : "Set weight"}
+        </button>
+      </div>
 
       <StaggerCard delay={0.05}>
         <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold">Today's Calories</p>
@@ -321,11 +334,13 @@ function HomeScreen({
         <p className="text-[13px] text-gray-500 mt-2 font-semibold">{remaining.toLocaleString()} kcal remaining</p>
       </StaggerCard>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <MacroTile label="Protein" value={consumed.protein} target={targets.protein} unit="g" delay={0.1} />
         <MacroTile label="Carbs" value={consumed.carbs} target={targets.carbs} unit="g" delay={0.15} />
-        <MacroTile label="Water" value={water} target={3} unit="L" delay={0.2} onTap={() => setWater(Math.min(3, +(water + 0.25).toFixed(2)))} />
       </div>
+
+      <WaterCard water={water} target={targets.water} adjustWater={adjustWater} resetWater={resetWater} />
+
 
       <motion.button
         whileTap={{ scale: 0.95 }}
