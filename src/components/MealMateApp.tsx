@@ -763,13 +763,18 @@ function MealsScreen({
 }
 
 // ---------- SCREEN 4: ADVISOR ----------
-function AdvisorScreen({ phase, setPhase }: { phase: Phase; setPhase: (p: Phase) => void }) {
-  const d = PHASE_DATA[phase];
+function AdvisorScreen({
+  phase, setPhase, weight, targets,
+}: { phase: Phase; setPhase: (p: Phase) => void; weight: number; targets: Targets }) {
+  const meta = PHASE_META[phase];
+  const explanation = meta.explain(weight, targets);
 
   return (
     <div className="space-y-4 pb-4">
       <h1 className="text-[26px] font-extrabold leading-tight">AI Phase Advisor</h1>
-      <p className="text-[14px] text-gray-500 -mt-2">Coach recommendations based on your trends</p>
+      <p className="text-[14px] text-gray-500 -mt-2">
+        Personalised for {weight}kg — recommendations recalculate when you update your weight.
+      </p>
 
       <div
         style={{
@@ -786,25 +791,25 @@ function AdvisorScreen({ phase, setPhase }: { phase: Phase; setPhase: (p: Phase)
             <Sparkles size={11} /> AI Recommendation
           </span>
           <motion.span
-            key={d.confidence}
+            key={meta.confidence}
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             className="text-[14px] font-extrabold"
             style={{ color: "var(--mm-primary)" }}
           >
-            {d.confidence}%
+            {meta.confidence}%
           </motion.span>
         </div>
         <AnimatePresence mode="wait">
           <motion.div
-            key={phase}
+            key={phase + weight}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.3 }}
           >
             <p className="text-[32px] font-extrabold mt-3 leading-none">{phase}</p>
-            <p className="text-[14px] text-gray-500 mt-3 leading-relaxed">{d.explanation}</p>
+            <p className="text-[14px] text-gray-500 mt-3 leading-relaxed">{explanation}</p>
           </motion.div>
         </AnimatePresence>
       </div>
@@ -840,13 +845,168 @@ function AdvisorScreen({ phase, setPhase }: { phase: Phase; setPhase: (p: Phase)
       <StaggerCard delay={0.05}>
         <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold">Adjusted Daily Target</p>
         <p className="text-[40px] font-extrabold leading-none mt-2">
-          <CountUp value={d.kcal} />
+          <CountUp value={targets.kcal} />
           <span className="text-[16px] text-gray-400 font-bold ml-1">kcal/day</span>
         </p>
         <p className="text-[13px] text-gray-500 mt-3 font-semibold">
-          Protein: {d.protein}g · Carbs: {d.carbs}g · Fat: {d.fat}g
+          Protein: {targets.protein}g · Carbs: {targets.carbs}g · Fat: {targets.fat}g · Water: {targets.water}L
         </p>
       </StaggerCard>
     </div>
   );
 }
+
+// ---------- Water Card ----------
+function WaterCard({
+  water, target, adjustWater, resetWater,
+}: { water: number; target: number; adjustWater: (delta: number) => void; resetWater: () => void }) {
+  const pct = Math.min(100, (water / target) * 100);
+  const presets = [0.25, 0.5];
+
+  return (
+    <StaggerCard delay={0.22}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div
+            className="rounded-full flex items-center justify-center"
+            style={{ width: 32, height: 32, background: "var(--mm-primary-light)" }}
+          >
+            <Droplet size={16} style={{ color: "var(--mm-primary)" }} />
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold">Water</p>
+            <p className="text-[20px] font-extrabold leading-none mt-0.5">
+              {water.toFixed(2)}
+              <span className="text-[12px] text-gray-400 font-bold ml-1">/ {target}L</span>
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={resetWater}
+          className="flex items-center justify-center rounded-full"
+          style={{ width: 32, height: 32, background: "#f3f4f6", color: "#6b7280" }}
+          aria-label="Reset water"
+        >
+          <RotateCcw size={14} />
+        </button>
+      </div>
+
+      <div className="mt-3 h-2 rounded-full overflow-hidden" style={{ background: "var(--mm-border)" }}>
+        <motion.div
+          initial={false}
+          animate={{ width: `${pct}%` }}
+          transition={{ type: "spring", stiffness: 90, damping: 18 }}
+          style={{ height: "100%", background: "var(--mm-primary)" }}
+        />
+      </div>
+
+      <div className="grid grid-cols-4 gap-2 mt-3">
+        <motion.button
+          whileTap={{ scale: 0.92 }}
+          onClick={() => adjustWater(-0.25)}
+          className="font-extrabold text-[13px]"
+          style={{ border: "1px solid var(--mm-border)", borderRadius: 18, padding: "10px 0", color: "#6b7280" }}
+        >
+          −250
+        </motion.button>
+        {presets.map((p) => (
+          <motion.button
+            key={p}
+            whileTap={{ scale: 0.92 }}
+            onClick={() => adjustWater(p)}
+            className="font-extrabold text-[13px] text-white"
+            style={{ background: "var(--mm-primary)", borderRadius: 18, padding: "10px 0" }}
+          >
+            +{p * 1000}
+          </motion.button>
+        ))}
+        <motion.button
+          whileTap={{ scale: 0.92 }}
+          onClick={() => adjustWater(0.75)}
+          className="font-extrabold text-[13px]"
+          style={{ background: "var(--mm-primary-light)", color: "var(--mm-primary-dark)", borderRadius: 18, padding: "10px 0" }}
+        >
+          +750
+        </motion.button>
+      </div>
+      <p className="text-[11px] text-gray-400 mt-2 font-semibold text-center">amounts in ml</p>
+    </StaggerCard>
+  );
+}
+
+// ---------- Profile Sheet (weight onboarding) ----------
+function ProfileSheet({
+  open, onOpenChange, weight, setWeight,
+}: { open: boolean; onOpenChange: (b: boolean) => void; weight: number | null; setWeight: (w: number) => void }) {
+  const [draft, setDraft] = useState<string>(weight ? String(weight) : "75");
+
+  useEffect(() => {
+    if (open) setDraft(weight ? String(weight) : "75");
+  }, [open, weight]);
+
+  const save = () => {
+    const n = Number(draft);
+    if (!Number.isFinite(n) || n < 30 || n > 250) return;
+    setWeight(Math.round(n * 10) / 10);
+    onOpenChange(false);
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="bottom" className="rounded-t-3xl font-dm">
+        <div className="mx-auto mb-3 mt-1 h-1.5 w-12 rounded-full bg-gray-200" />
+        <SheetHeader>
+          <SheetTitle className="text-[20px] font-extrabold text-left">
+            {weight ? "Update your weight" : "Welcome to MealMate"}
+          </SheetTitle>
+        </SheetHeader>
+        <p className="text-[13px] text-gray-500 mt-1">
+          Your weight personalises your calorie targets, macros, water goal, and lifting prescriptions.
+        </p>
+
+        <div className="mt-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              inputMode="decimal"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="Weight"
+              className="text-[18px] font-extrabold h-12"
+            />
+            <span className="text-[14px] font-bold text-gray-500">kg</span>
+          </div>
+
+          <div className="grid grid-cols-4 gap-2">
+            {[60, 70, 80, 90].map((w) => (
+              <button
+                key={w}
+                onClick={() => setDraft(String(w))}
+                className="font-extrabold text-[13px]"
+                style={{
+                  border: "1px solid var(--mm-border)",
+                  borderRadius: 18,
+                  padding: "10px 0",
+                  background: draft === String(w) ? "var(--mm-primary-light)" : "white",
+                  color: draft === String(w) ? "var(--mm-primary-dark)" : "#374151",
+                }}
+              >
+                {w}kg
+              </button>
+            ))}
+          </div>
+
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={save}
+            className="w-full text-white font-extrabold"
+            style={{ background: "var(--mm-primary)", borderRadius: 28, padding: "14px 20px" }}
+          >
+            Save
+          </motion.button>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
