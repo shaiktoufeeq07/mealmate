@@ -184,6 +184,13 @@ export default function MealMateApp() {
 
           {/* bottom nav */}
           <BottomNav tab={tab} setTab={setTab} />
+
+          <ProfileSheet
+            open={profileOpen}
+            onOpenChange={setProfileOpen}
+            weight={weight}
+            setWeight={setWeight}
+          />
         </div>
       </div>
     </div>
