@@ -14,6 +14,8 @@ import {
   Loader2,
   Check,
   X,
+  Droplet,
+  RotateCcw,
 } from "lucide-react";
 import {
   LineChart,
@@ -35,27 +37,43 @@ import { Badge } from "@/components/ui/badge";
 // ---------- shared types & data ----------
 type Phase = "Bulk" | "Lean Bulk" | "Cut";
 type Meal = { id: string; name: string; kcal: number; protein: number; carbs: number; fat?: number; time: string };
+type Targets = { kcal: number; protein: number; carbs: number; fat: number; water: number };
 
-const PHASE_DATA: Record<
-  Phase,
-  { kcal: number; protein: number; carbs: number; fat: number; confidence: number; explanation: string }
-> = {
+// Multipliers per kg of bodyweight. AI recommendations scale with the user's weight.
+const PHASE_MULTIPLIERS: Record<Phase, { kcal: number; protein: number; carbs: number; fat: number }> = {
+  Bulk:       { kcal: 38, protein: 2.2, carbs: 4.5, fat: 1.1 },
+  "Lean Bulk":{ kcal: 33, protein: 2.2, carbs: 3.5, fat: 1.0 },
+  Cut:        { kcal: 26, protein: 2.4, carbs: 2.5, fat: 0.8 },
+};
+
+const PHASE_META: Record<Phase, { confidence: number; explain: (w: number, t: Targets) => string }> = {
   Bulk: {
-    kcal: 2800, protein: 200, carbs: 330, fat: 90, confidence: 74,
-    explanation:
-      "Based on your recent plateau in strength gains, increasing your caloric surplus to 2,800 kcal will fuel muscle growth. Expect +0.5kg/week body weight increase.",
+    confidence: 74,
+    explain: (w, t) =>
+      `At ${w}kg, a Bulk surplus targets ${t.kcal} kcal/day (~38 kcal/kg). Expect +0.4-0.6kg/week. Hit ${t.protein}g protein to drive muscle synthesis.`,
   },
   "Lean Bulk": {
-    kcal: 2400, protein: 180, carbs: 270, fat: 80, confidence: 87,
-    explanation:
-      "Your weight has trended +0.3kg/week over 4 weeks while strength gains are consistent. A Lean Bulk maximises muscle while limiting fat gain.",
+    confidence: 87,
+    explain: (w, t) =>
+      `At ${w}kg, a Lean Bulk holds you at ${t.kcal} kcal/day (~33 kcal/kg) — enough surplus for strength gains while keeping fat gain minimal (~0.2kg/week).`,
   },
   Cut: {
-    kcal: 1900, protein: 170, carbs: 180, fat: 65, confidence: 91,
-    explanation:
-      "With body fat trending above target, a caloric deficit of 500 kcal/day while maintaining high protein will preserve muscle mass during fat loss.",
+    confidence: 91,
+    explain: (w, t) =>
+      `At ${w}kg, a Cut deficit of ${t.kcal} kcal/day (~26 kcal/kg) drops ~0.5kg/week. High protein (${t.protein}g) preserves the muscle you've built.`,
   },
 };
+
+function computeTargets(weight: number, phase: Phase): Targets {
+  const m = PHASE_MULTIPLIERS[phase];
+  return {
+    kcal: Math.round((weight * m.kcal) / 10) * 10,
+    protein: Math.round(weight * m.protein),
+    carbs: Math.round(weight * m.carbs),
+    fat: Math.round(weight * m.fat),
+    water: Math.max(2, Math.round((weight * 0.035) * 10) / 10), // L/day
+  };
+}
 
 // ---------- CountUp ----------
 function CountUp({ value, duration = 600 }: { value: number; duration?: number }) {
@@ -83,13 +101,24 @@ function CountUp({ value, duration = 600 }: { value: number; duration?: number }
 export default function MealMateApp() {
   const [tab, setTab] = useState<0 | 1 | 2 | 3>(0);
   const [phase, setPhase] = useState<Phase>("Cut");
+  const [weight, setWeight] = useState<number | null>(null); // kg
+  const [profileOpen, setProfileOpen] = useState(false);
   const [meals, setMeals] = useState<Meal[]>([
     { id: "m1", name: "Greek Yogurt Bowl", kcal: 320, protein: 28, carbs: 35, time: "8:15 AM" },
     { id: "m2", name: "Chicken & Rice", kcal: 520, protein: 45, carbs: 60, time: "12:40 PM" },
   ]);
-  const [water, setWater] = useState(1.4);
+  const [water, setWater] = useState(1.4); // L consumed today
 
-  const targets = PHASE_DATA[phase];
+  // Open onboarding if user hasn't set weight yet
+  useEffect(() => {
+    if (weight === null) {
+      const t = setTimeout(() => setProfileOpen(true), 400);
+      return () => clearTimeout(t);
+    }
+  }, [weight]);
+
+  const effectiveWeight = weight ?? 75;
+  const targets = computeTargets(effectiveWeight, phase);
   const consumed = meals.reduce(
     (a, m) => ({
       kcal: a.kcal + m.kcal,
@@ -105,11 +134,14 @@ export default function MealMateApp() {
     setMeals((prev) => [...prev, { ...m, id: crypto.randomUUID(), time }]);
   };
 
+  const adjustWater = (delta: number) =>
+    setWater((w) => Math.max(0, Math.min(targets.water + 1, +(w + delta).toFixed(2))));
+
   const screens = [
-    <HomeScreen key="home" phase={phase} targets={targets} consumed={consumed} meals={meals} water={water} setWater={setWater} addMeal={addMeal} />,
-    <GymScreen key="gym" />,
-    <MealsScreen key="meals" phase={phase} targets={targets} addMeal={addMeal} />,
-    <AdvisorScreen key="adv" phase={phase} setPhase={setPhase} />,
+    <HomeScreen key="home" phase={phase} targets={targets} consumed={consumed} meals={meals} water={water} adjustWater={adjustWater} resetWater={() => setWater(0)} addMeal={addMeal} weight={weight} openProfile={() => setProfileOpen(true)} />,
+    <GymScreen key="gym" weight={effectiveWeight} phase={phase} />,
+    <MealsScreen key="meals" phase={phase} targets={targets} weight={effectiveWeight} addMeal={addMeal} />,
+    <AdvisorScreen key="adv" phase={phase} setPhase={setPhase} weight={effectiveWeight} targets={targets} />,
   ];
 
   return (
@@ -152,6 +184,13 @@ export default function MealMateApp() {
 
           {/* bottom nav */}
           <BottomNav tab={tab} setTab={setTab} />
+
+          <ProfileSheet
+            open={profileOpen}
+            onOpenChange={setProfileOpen}
+            weight={weight}
+            setWeight={setWeight}
+          />
         </div>
       </div>
     </div>
@@ -221,15 +260,18 @@ function StaggerCard({ delay = 0, children, style }: { delay?: number; children:
 
 // ---------- SCREEN 1: HOME ----------
 function HomeScreen({
-  phase, targets, consumed, meals, water, setWater, addMeal,
+  phase, targets, consumed, meals, water, adjustWater, resetWater, addMeal, weight, openProfile,
 }: {
   phase: Phase;
-  targets: { kcal: number; protein: number; carbs: number };
+  targets: Targets;
   consumed: { kcal: number; protein: number; carbs: number };
   meals: Meal[];
   water: number;
-  setWater: (n: number) => void;
+  adjustWater: (delta: number) => void;
+  resetWater: () => void;
   addMeal: (m: Omit<Meal, "id" | "time">) => void;
+  weight: number | null;
+  openProfile: () => void;
 }) {
   const [sheet, setSheet] = useState(false);
   const [form, setForm] = useState({ name: "", kcal: "", protein: "", carbs: "" });
@@ -246,6 +288,7 @@ function HomeScreen({
           <p className="text-[14px] text-gray-500 mt-1">{today}</p>
         </div>
         <button
+          onClick={openProfile}
           className="rounded-full flex items-center justify-center"
           style={{ width: 42, height: 42, background: "var(--mm-primary-light)" }}
         >
@@ -253,15 +296,24 @@ function HomeScreen({
         </button>
       </div>
 
-      <motion.div
-        key={phase}
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-bold"
-        style={{ background: "var(--mm-primary-light)", color: "var(--mm-primary-dark)" }}
-      >
-        <Sparkles size={12} /> {phase} Phase
-      </motion.div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <motion.div
+          key={phase}
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-bold"
+          style={{ background: "var(--mm-primary-light)", color: "var(--mm-primary-dark)" }}
+        >
+          <Sparkles size={12} /> {phase} Phase
+        </motion.div>
+        <button
+          onClick={openProfile}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-bold border"
+          style={{ borderColor: "var(--mm-border)", color: "#374151" }}
+        >
+          {weight ? `${weight} kg` : "Set weight"}
+        </button>
+      </div>
 
       <StaggerCard delay={0.05}>
         <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold">Today's Calories</p>
@@ -282,11 +334,13 @@ function HomeScreen({
         <p className="text-[13px] text-gray-500 mt-2 font-semibold">{remaining.toLocaleString()} kcal remaining</p>
       </StaggerCard>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <MacroTile label="Protein" value={consumed.protein} target={targets.protein} unit="g" delay={0.1} />
         <MacroTile label="Carbs" value={consumed.carbs} target={targets.carbs} unit="g" delay={0.15} />
-        <MacroTile label="Water" value={water} target={3} unit="L" delay={0.2} onTap={() => setWater(Math.min(3, +(water + 0.25).toFixed(2)))} />
       </div>
+
+      <WaterCard water={water} target={targets.water} adjustWater={adjustWater} resetWater={resetWater} />
+
 
       <motion.button
         whileTap={{ scale: 0.95 }}
@@ -393,19 +447,52 @@ function MacroTile({
 }
 
 // ---------- SCREEN 2: GYM ----------
-function GymScreen() {
+function GymScreen({ weight, phase }: { weight: number; phase: Phase }) {
+  // Weight-aware programming. Bench target = bodyweight * phase coefficient.
+  const benchCoef = phase === "Bulk" ? 1.15 : phase === "Lean Bulk" ? 1.05 : 0.95;
+  const benchTarget = Math.round(weight * benchCoef / 2.5) * 2.5;
+  const ohp = Math.round((weight * 0.6) / 2.5) * 2.5;
+  const lat = Math.max(5, Math.round((weight * 0.18) / 0.5) * 0.5);
+
+  const repScheme =
+    phase === "Cut"
+      ? { sets: 3, reps: 12 } // preserve muscle, higher reps
+      : phase === "Lean Bulk"
+        ? { sets: 4, reps: 8 }
+        : { sets: 5, reps: 6 }; // bulk — heavier
+
   const [exercises, setExercises] = useState([
-    { name: "Bench Press", sets: 4, reps: 8, weight: 80, unit: "kg" },
-    { name: "Overhead Press", sets: 3, reps: 10, weight: 45, unit: "kg" },
+    { name: "Bench Press", sets: repScheme.sets, reps: repScheme.reps, weight: benchTarget, unit: "kg" },
+    { name: "Overhead Press", sets: 3, reps: repScheme.reps + 2, weight: ohp, unit: "kg" },
     { name: "Tricep Dips", sets: 3, reps: 12, weight: 0, unit: "BW" },
-    { name: "Lateral Raise", sets: 4, reps: 15, weight: 12, unit: "kg" },
+    { name: "Lateral Raise", sets: 4, reps: 15, weight: lat, unit: "kg" },
   ]);
+
+  // Re-sync prescribed loads when weight or phase change
+  useEffect(() => {
+    setExercises([
+      { name: "Bench Press", sets: repScheme.sets, reps: repScheme.reps, weight: benchTarget, unit: "kg" },
+      { name: "Overhead Press", sets: 3, reps: repScheme.reps + 2, weight: ohp, unit: "kg" },
+      { name: "Tricep Dips", sets: 3, reps: 12, weight: 0, unit: "BW" },
+      { name: "Lateral Raise", sets: 4, reps: 15, weight: lat, unit: "kg" },
+    ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weight, phase]);
+
+  // 4-week trend scaled around the user's bench target
   const data = [
-    { name: "W1", kg: 70 },
-    { name: "W2", kg: 75 },
-    { name: "W3", kg: 77.5 },
-    { name: "W4", kg: 80 },
+    { name: "W1", kg: Math.round((benchTarget - 10) * 10) / 10 },
+    { name: "W2", kg: Math.round((benchTarget - 5) * 10) / 10 },
+    { name: "W3", kg: Math.round((benchTarget - 2.5) * 10) / 10 },
+    { name: "W4", kg: benchTarget },
   ];
+
+  const aiTip =
+    phase === "Bulk"
+      ? `At ${weight}kg in a Bulk, push compounds heavy (${repScheme.sets}×${repScheme.reps}). Add 2.5kg to bench weekly while you can.`
+      : phase === "Lean Bulk"
+        ? `At ${weight}kg, run ${repScheme.sets}×${repScheme.reps} on big lifts. Add reps before load to chase clean strength gains.`
+        : `At ${weight}kg in a Cut, keep loads near ${benchTarget}kg but raise reps to ${repScheme.reps}. Protect strength, don't chase PRs.`;
 
   const update = (i: number, key: "reps" | "weight", delta: number) =>
     setExercises((prev) =>
@@ -414,8 +501,21 @@ function GymScreen() {
 
   return (
     <div className="space-y-4 pb-4">
-      <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold">Today · 19 Mon</p>
-      <h1 className="text-[30px] font-extrabold leading-none">Push Day</h1>
+      <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold">Today · Push Day</p>
+      <h1 className="text-[30px] font-extrabold leading-none">{weight}kg · {phase}</h1>
+
+      <div
+        style={{ ...cardStyle, borderLeft: "3px solid var(--mm-primary)", padding: 14 }}
+      >
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <Sparkles size={12} style={{ color: "var(--mm-primary)" }} />
+          <span className="text-[10px] uppercase tracking-wider font-bold" style={{ color: "var(--mm-primary-dark)" }}>
+            AI Coach
+          </span>
+        </div>
+        <p className="text-[13px] text-gray-600 leading-relaxed">{aiTip}</p>
+      </div>
+
 
       <motion.div
         initial={{ scale: 1 }}
@@ -510,8 +610,8 @@ function Stepper({ value, onMinus, onPlus, disabled }: { value: number | string;
 type Suggestion = { name: string; kcal: number; protein: number; carbs: number; fat: number; description: string };
 
 function MealsScreen({
-  phase, targets, addMeal,
-}: { phase: Phase; targets: { kcal: number; protein: number; carbs: number; fat: number }; addMeal: (m: Omit<Meal, "id" | "time">) => void }) {
+  phase, targets, weight, addMeal,
+}: { phase: Phase; targets: Targets; weight: number; addMeal: (m: Omit<Meal, "id" | "time">) => void }) {
   const [tags, setTags] = useState<string[]>(["Chicken", "Rice", "Eggs"]);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
@@ -527,7 +627,7 @@ function MealsScreen({
       const res = await fetch("/api/meals", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ingredients: tags, phase, targets }),
+        body: JSON.stringify({ ingredients: tags, phase, targets, weight }),
       });
       if (!res.ok) throw new Error("bad");
       const data = (await res.json()) as { meals: Suggestion[] };
@@ -539,6 +639,7 @@ function MealsScreen({
       setLoading(false);
     }
   };
+
 
   return (
     <div className="space-y-4 pb-4">
@@ -662,13 +763,18 @@ function MealsScreen({
 }
 
 // ---------- SCREEN 4: ADVISOR ----------
-function AdvisorScreen({ phase, setPhase }: { phase: Phase; setPhase: (p: Phase) => void }) {
-  const d = PHASE_DATA[phase];
+function AdvisorScreen({
+  phase, setPhase, weight, targets,
+}: { phase: Phase; setPhase: (p: Phase) => void; weight: number; targets: Targets }) {
+  const meta = PHASE_META[phase];
+  const explanation = meta.explain(weight, targets);
 
   return (
     <div className="space-y-4 pb-4">
       <h1 className="text-[26px] font-extrabold leading-tight">AI Phase Advisor</h1>
-      <p className="text-[14px] text-gray-500 -mt-2">Coach recommendations based on your trends</p>
+      <p className="text-[14px] text-gray-500 -mt-2">
+        Personalised for {weight}kg — recommendations recalculate when you update your weight.
+      </p>
 
       <div
         style={{
@@ -685,25 +791,25 @@ function AdvisorScreen({ phase, setPhase }: { phase: Phase; setPhase: (p: Phase)
             <Sparkles size={11} /> AI Recommendation
           </span>
           <motion.span
-            key={d.confidence}
+            key={meta.confidence}
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             className="text-[14px] font-extrabold"
             style={{ color: "var(--mm-primary)" }}
           >
-            {d.confidence}%
+            {meta.confidence}%
           </motion.span>
         </div>
         <AnimatePresence mode="wait">
           <motion.div
-            key={phase}
+            key={phase + weight}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.3 }}
           >
             <p className="text-[32px] font-extrabold mt-3 leading-none">{phase}</p>
-            <p className="text-[14px] text-gray-500 mt-3 leading-relaxed">{d.explanation}</p>
+            <p className="text-[14px] text-gray-500 mt-3 leading-relaxed">{explanation}</p>
           </motion.div>
         </AnimatePresence>
       </div>
@@ -739,13 +845,168 @@ function AdvisorScreen({ phase, setPhase }: { phase: Phase; setPhase: (p: Phase)
       <StaggerCard delay={0.05}>
         <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold">Adjusted Daily Target</p>
         <p className="text-[40px] font-extrabold leading-none mt-2">
-          <CountUp value={d.kcal} />
+          <CountUp value={targets.kcal} />
           <span className="text-[16px] text-gray-400 font-bold ml-1">kcal/day</span>
         </p>
         <p className="text-[13px] text-gray-500 mt-3 font-semibold">
-          Protein: {d.protein}g · Carbs: {d.carbs}g · Fat: {d.fat}g
+          Protein: {targets.protein}g · Carbs: {targets.carbs}g · Fat: {targets.fat}g · Water: {targets.water}L
         </p>
       </StaggerCard>
     </div>
   );
 }
+
+// ---------- Water Card ----------
+function WaterCard({
+  water, target, adjustWater, resetWater,
+}: { water: number; target: number; adjustWater: (delta: number) => void; resetWater: () => void }) {
+  const pct = Math.min(100, (water / target) * 100);
+  const presets = [0.25, 0.5];
+
+  return (
+    <StaggerCard delay={0.22}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div
+            className="rounded-full flex items-center justify-center"
+            style={{ width: 32, height: 32, background: "var(--mm-primary-light)" }}
+          >
+            <Droplet size={16} style={{ color: "var(--mm-primary)" }} />
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold">Water</p>
+            <p className="text-[20px] font-extrabold leading-none mt-0.5">
+              {water.toFixed(2)}
+              <span className="text-[12px] text-gray-400 font-bold ml-1">/ {target}L</span>
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={resetWater}
+          className="flex items-center justify-center rounded-full"
+          style={{ width: 32, height: 32, background: "#f3f4f6", color: "#6b7280" }}
+          aria-label="Reset water"
+        >
+          <RotateCcw size={14} />
+        </button>
+      </div>
+
+      <div className="mt-3 h-2 rounded-full overflow-hidden" style={{ background: "var(--mm-border)" }}>
+        <motion.div
+          initial={false}
+          animate={{ width: `${pct}%` }}
+          transition={{ type: "spring", stiffness: 90, damping: 18 }}
+          style={{ height: "100%", background: "var(--mm-primary)" }}
+        />
+      </div>
+
+      <div className="grid grid-cols-4 gap-2 mt-3">
+        <motion.button
+          whileTap={{ scale: 0.92 }}
+          onClick={() => adjustWater(-0.25)}
+          className="font-extrabold text-[13px]"
+          style={{ border: "1px solid var(--mm-border)", borderRadius: 18, padding: "10px 0", color: "#6b7280" }}
+        >
+          −250
+        </motion.button>
+        {presets.map((p) => (
+          <motion.button
+            key={p}
+            whileTap={{ scale: 0.92 }}
+            onClick={() => adjustWater(p)}
+            className="font-extrabold text-[13px] text-white"
+            style={{ background: "var(--mm-primary)", borderRadius: 18, padding: "10px 0" }}
+          >
+            +{p * 1000}
+          </motion.button>
+        ))}
+        <motion.button
+          whileTap={{ scale: 0.92 }}
+          onClick={() => adjustWater(0.75)}
+          className="font-extrabold text-[13px]"
+          style={{ background: "var(--mm-primary-light)", color: "var(--mm-primary-dark)", borderRadius: 18, padding: "10px 0" }}
+        >
+          +750
+        </motion.button>
+      </div>
+      <p className="text-[11px] text-gray-400 mt-2 font-semibold text-center">amounts in ml</p>
+    </StaggerCard>
+  );
+}
+
+// ---------- Profile Sheet (weight onboarding) ----------
+function ProfileSheet({
+  open, onOpenChange, weight, setWeight,
+}: { open: boolean; onOpenChange: (b: boolean) => void; weight: number | null; setWeight: (w: number) => void }) {
+  const [draft, setDraft] = useState<string>(weight ? String(weight) : "75");
+
+  useEffect(() => {
+    if (open) setDraft(weight ? String(weight) : "75");
+  }, [open, weight]);
+
+  const save = () => {
+    const n = Number(draft);
+    if (!Number.isFinite(n) || n < 30 || n > 250) return;
+    setWeight(Math.round(n * 10) / 10);
+    onOpenChange(false);
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="bottom" className="rounded-t-3xl font-dm">
+        <div className="mx-auto mb-3 mt-1 h-1.5 w-12 rounded-full bg-gray-200" />
+        <SheetHeader>
+          <SheetTitle className="text-[20px] font-extrabold text-left">
+            {weight ? "Update your weight" : "Welcome to MealMate"}
+          </SheetTitle>
+        </SheetHeader>
+        <p className="text-[13px] text-gray-500 mt-1">
+          Your weight personalises your calorie targets, macros, water goal, and lifting prescriptions.
+        </p>
+
+        <div className="mt-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              inputMode="decimal"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="Weight"
+              className="text-[18px] font-extrabold h-12"
+            />
+            <span className="text-[14px] font-bold text-gray-500">kg</span>
+          </div>
+
+          <div className="grid grid-cols-4 gap-2">
+            {[60, 70, 80, 90].map((w) => (
+              <button
+                key={w}
+                onClick={() => setDraft(String(w))}
+                className="font-extrabold text-[13px]"
+                style={{
+                  border: "1px solid var(--mm-border)",
+                  borderRadius: 18,
+                  padding: "10px 0",
+                  background: draft === String(w) ? "var(--mm-primary-light)" : "white",
+                  color: draft === String(w) ? "var(--mm-primary-dark)" : "#374151",
+                }}
+              >
+                {w}kg
+              </button>
+            ))}
+          </div>
+
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={save}
+            className="w-full text-white font-extrabold"
+            style={{ background: "var(--mm-primary)", borderRadius: 28, padding: "14px 20px" }}
+          >
+            Save
+          </motion.button>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
